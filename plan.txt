@@ -1,0 +1,231 @@
+==============================================
+PROJECT PLAN: Pygame Smasher to Web-Based Online Arena
+==============================================
+
+Project Goal: To convert the existing Pygame prototype into a scalable, web-based, online multiplayer game, expandable with new characters and stages, and hosted for public play.
+
+Executive Summary: A Note on Scope
+------------------------------------
+This plan outlines a significant technical evolution. The leap from a local Python script to a networked, browser-based game is one of the largest-scale pivots in game development.
+
+Your current Pygame code is an excellent prototype. However, it CANNOT be hosted on GitHub Pages, and it CANNOT directly communicate with another computer over the internet.
+
+This plan requires a COMPLETE rewrite of the game in a new language (JavaScript) and the creation of a separate server application. This is a massive but incredibly rewarding project.
+
+---
+
+==============================================
+Phase 1: The Great Migration (Python to JavaScript)
+==============================================
+
+This is the most critical and non-negotiable phase. To run in a browser and be hosted on GitHub Pages, the game *must* be written in JavaScript.
+
+1.1 Why this is Necessary
+--------------------------
+* GitHub Pages: This is a *static site* host. It serves HTML, CSS, and JavaScript files. It cannot execute Python code.
+* Browser Compatibility: The only language that runs natively in all web browsers is JavaScript.
+
+1.2 Your New Technology Stack
+------------------------------
+* Game Engine (Client): Phaser.js or Pixi.js.
+    * Recommendation: Use Phaser. It is a complete 2D game framework with built-in physics (Arcade Physics), game loops, input handling, and animation managers. It will feel the most similar to the "all-in-one" nature of Pygame.
+* Language: JavaScript (or TypeScript, for better long-term scalability).
+* Host (Client): GitHub Pages.
+
+1.3 Action Plan (Porting the Logic)
+-------------------------------------
+1.  Set up the Project: Create a new repository on GitHub. In it, create an index.html file, a style.css file, and a game.js file. The index.html will load the Phaser library and your game.js script.
+2.  Re-create the Game Loop: In Phaser, this is handled by the preload(), create(), and update() functions within a "Scene." This is the direct equivalent of your main() function's `while running:` loop.
+3.  Port the Character Class: Re-create your Character class as a JavaScript class. In Phaser, you will likely extend `Phaser.Physics.Arcade.Sprite` to get physics and rendering for free.
+    * All your variables (vx, vy, on_ground, hitstun) will become properties of this new JavaScript class.
+    * All your functions (move, update, take_damage) will become methods of this class.
+4.  Port the Platform Class: Re-create this class. In Phaser, platforms will be part of a StaticGroup in the physics engine.
+5.  Port the Projectile Class: Re-create this as a JavaScript class, also likely extending `Phaser.Physics.Arcade.Sprite`.
+6.  Re-implement Physics & Collisions:
+    * Remove all your manual physics code (self.vy += GRAVITY, self.x += self.vx).
+    * Replace it with Phaser's Arcade Physics. You will set a *global* gravity and then set properties on your character sprite (like body.setBounce(), body.setDrag()).
+    * Replace your manual collision loop (`for platform in platforms:`) with Phaser's collider system:
+        `this.physics.add.collider(player1, platforms);`
+        `this.physics.add.overlap(player1.attack_hitbox, player2, this.handle_hit);`
+7.  Re-implement Input: Replace Pygame's `keys = pygame.key.get_pressed()` with Phaser's input handler: `this.cursors = this.input.keyboard.createCursorKeys();`
+
+---
+
+==============================================
+Phase 2: Refactor for Scalability (Characters & Stages)
+==============================================
+
+This phase addresses your request for "more characters and stages." The key is to stop hard-coding values and move to a data-driven structure.
+
+2.1 The Data-Driven Approach
+-----------------------------
+Instead of `if self.type == "warrior": ...` inside the Character class, the Character class should be a "dumb" container that loads its properties from a data file.
+
+2.2 Action Plan (Data-Driven Design)
+--------------------------------------
+1.  Create Character Definition Files: Create a folder like /data/characters/. Inside, create JSON files: warrior.json, ninja.json, etc.
+    * warrior.json:
+        {
+          "name": "Warrior",
+          "stats": {
+            "move_speed": 4.5,
+            "jumps": 2,
+            "weight": 1.1 
+          },
+          "moves": {
+            "attack1": {
+              "name": "Hammer Smash",
+              "damage": 20,
+              "cooldown": 45,
+              "hitbox": { "x": 50, "y": 10, "w": 45, "h": 45 }
+            },
+            "attack2": {
+              "name": "Fire Blast",
+              "type": "projectile",
+              "projectile_key": "fireball",
+              "cooldown": 70
+            }
+          }
+        }
+
+2.  Create Stage Definition Files: Create a folder /data/stages/. Inside, create pokemon_stadium.json, battlefield.json, etc.
+    * pokemon_stadium.json:
+        {
+          "name": "Stadium",
+          "background_image": "stadium_bg.png",
+          "platforms": [
+            { "x": 100, "y": 500, "w": 600, "h": 20 },
+            { "x": 150, "y": 350, "w": 200, "h": 15 },
+            { "x": 450, "y": 350, "w": 200, "h": 15 }
+          ],
+          "spawn_points": [
+            { "x": 200, "y": 450 },
+            { "x": 600, "y": 450 }
+          ]
+        }
+
+3.  Update Game Logic:
+    * Your Character Select screen will now read the files in the /data/characters/ directory to build the selection grid.
+    * When a character is chosen, the Character class will be initialized: `new Character(this, 'warrior.json')`. The class's constructor will read the JSON file and set its internal properties.
+    * Your game will have a StageSelect scene that reads the /data/stages/ directory. When a stage is chosen, the game scene will load that JSON and build the platforms dynamically.
+
+Result: Adding a new character is as simple as creating a new JSON file and its art assets. No game logic code needs to change.
+
+---
+
+==============================================
+Phase 3: Core Gameplay Tweak (Platform Logic)
+==============================================
+
+This addresses your request to "make the platforms always so that you can never fall through."
+
+3.1 The Problem
+-----------------
+Your current code has a feature where pressing "Down" allows you to drop through a platform.
+(Code snippet: `if self.on_ground and keys[self.controls['down']]: ...`)
+
+3.2 Action Plan (Implementation)
+----------------------------------
+1.  During the Phase 1 (JavaScript) port: Simply DO NOT re-implement this feature.
+2.  Phaser's built-in physics collider (`this.physics.add.collider(player, platforms);`) is solid by default. It will not allow a player to fall through.
+3.  If you *do* want to add this feature back later, Phaser has a "one-way collision" or "jumping-through-platform" feature that you can enable, which is much more robust than your current manual check.
+
+---
+
+==============================================
+Phase 4: Implementing Online Multiplayer
+==============================================
+
+This is the second massive challenge. It requires a new component: a server.
+
+4.1 Architecture Overview
+---------------------------
+* Client (Your Game): The JavaScript game running on GitHub Pages.
+* Server (The Brain): A separate application, running 24/7 on a server host, that manages connections and game state.
+
+Your game will follow a Client-Server model. Players do *not* connect to each other directly. They BOTH connect to your central server.
+
+4.2 Your New Server-Side Technology Stack
+-------------------------------------------
+* Runtime: Node.js (This lets you run JavaScript on a server).
+* Networking: Socket.IO (A library that makes real-time, two-way communication between the browser and a Node.js server simple).
+* Host (Server): Heroku, Replit, Glitch, or a VPS (DigitalOcean, Linode).
+    * Recommendation: Start with Heroku or Replit's "Always On" feature. They have free/cheap tiers that are perfect for projects.
+    * You cannot host a Node.js server on GitHub Pages.
+
+4.3 Action Plan (Server-Side)
+-------------------------------
+1.  Create the Server App: In a *new project folder*, initialize a Node.js project (`npm init`). Install `socket.io`.
+2.  Write `server.js`: This file will be your entire server. Its jobs are:
+    * Listen for new connections (`io.on('connection', (socket) => { ... });`).
+    * Lobby Management: When a player connects, put them in a "lobby." When a second player connects, pair them together, create a "game room" for them, and tell both of their games to start.
+    * State Relay:
+        * When Player 1 emits an "I am moving" event (e.g., `socket.emit('player_move', {x: 100, y: 200, vx: 5});`), the server receives it.
+        * The server then *broadcasts* this event to Player 2 (e.g., `socket.to(room).emit('opponent_move', {x: 100, y: 200, vx: 5});`).
+        * The server does the same for attacks, damage, and knockback.
+
+4.4 Action Plan (Client-Side)
+-------------------------------
+1.  Integrate Socket.IO Client: Add the Socket.IO client library to your index.html.
+2.  Connect to Server: In your game.js, connect to your server's URL: `this.socket = io('https://your-server-host.herokuapp.com');`
+3.  Emit Your State: In your game's update() loop, send your player's essential data to the server:
+    `this.socket.emit('player_update', { x: this.player.x, y: this.player.y, anim_key: 'running' });`
+4.  Listen for Opponent's State: Create a "ghost" or "opponent" sprite.
+    * `this.socket.on('opponent_update', (data) => { ... });`
+    * Inside this listener, update the opponent sprite's position and animation:
+        `this.opponent.setPosition(data.x, data.y);`
+        `this.opponent.play(data.anim_key);`
+5.  Handle Authoritative Events: When you attack, you *tell the server* you attacked (`socket.emit('player_attack', 'fireball');`). The *server* decides if it was a hit. The server then tells *both* players, "Player 2 took damage" (`io.in(room).emit('player_hit', {victim: 'p2', damage: 10});`).
+    * This prevents cheating. The client is "dumb" and just follows the server's orders.
+
+---
+
+==============================================
+Phase 5: Deployment (Putting It All Together)
+==============================================
+
+You have two separate projects that need to be deployed to two separate services.
+
+1.  The Client (Game):
+    * This is your project with index.html, game.js, and all your art/sound assets.
+    * Enable GitHub Pages in this repository's "Settings" tab.
+    * Push your code to the main branch.
+    * Your game will be live at `https://your-username.github.io/your-repo-name/`.
+
+2.  The Server (Brain):
+    * This is your Node.js project with server.js and package.json.
+    * Create a new app on Heroku (or your chosen host).
+    * Link this Heroku app to your server's GitHub repository.
+    * Deploy the server. Heroku will give you a URL like `https://your-server-app.herokuapp.com/`.
+
+The Final Connection: In your Client's game.js (on GitHub Pages), make sure the Socket.IO connection points to your Heroku URL: `this.socket = io('https://your-server-app.herokuapp.com');`.
+
+---
+
+==============================================
+Final Project Roadmap
+==============================================
+
+* [ ] Phase 1: Port
+    * [ ] Set up a new JavaScript project with Phaser.js.
+    * [ ] Re-implement all core classes (Character, Projectile, Platform) in JavaScript.
+    * [ ] Re-implement all physics and collisions using Phaser's built-in engine.
+* [ ] Phase 2: Refactor
+    * [ ] Design the JSON structure for characters.
+    * [ ] Design the JSON structure for stages.
+    * [ ] Rewrite game logic to load from these JSON files instead of using if/else checks.
+* [ ] Phase 3: Tweak
+    * [ ] Confirm that the new physics engine does not allow falling through platforms.
+* [ ] Phase 4: Network
+    * [ ] Build the separate Node.js server application using Socket.IO.
+    * [ ] Implement a "lobby" system to match two players.
+    * [ ] Implement client-side logic to send local player data to the server.
+    * [ ] Implement client-side logic to receive opponent data and display it.
+* [ ] Phase 5: Deploy
+    * [ ] Deploy the client (game) to GitHub Pages.
+    * [ ] Deploy the server (Node.js) to Heroku or a similar service.
+    * [ ] Connect the client to the server's live URL.
+* [ ] Phase 6: Expand (The "Full-Fledged" Part)
+    * [ ] Add new characters by adding new .json files and art assets.
+    * [ ] Add new stages by adding new .json files and art assets.
+    * [ ] Add a main menu, sound effects, music, and better UI.
