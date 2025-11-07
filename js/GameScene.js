@@ -40,6 +40,8 @@ class GameScene extends Phaser.Scene {
     
     createBackground() {
         this.bgGraphics = this.add.graphics();
+        this.bgGraphics.setDepth(-10); // <-- ADD THIS LINE
+
         for (let i = 0; i < GAME_CONFIG.HEIGHT; i++) {
             const colorValue = Math.floor(50 + (i / GAME_CONFIG.HEIGHT) * 50);
             const color = Phaser.Display.Color.GetColor(colorValue, colorValue, colorValue + 50);
@@ -86,34 +88,41 @@ class GameScene extends Phaser.Scene {
         });
     }
     
+    // In js/GameScene.js
+
     createUI() {
-        this.uiGraphics = this.add.graphics();
+        this.uiGraphics = this.add.graphics().setDepth(10); // <-- ADD DEPTH
         this.p1StockText = this.add.text(10, 10, '', {
             fontSize: '24px', fill: '#FF6464', fontFamily: 'Arial'
-        });
+        }).setDepth(10); // <-- ADD DEPTH
+        
         this.p2StockText = this.add.text(GAME_CONFIG.WIDTH - 200, 10, '', {
             fontSize: '24px', fill: '#6464FF', fontFamily: 'Arial'
-        });
+        }).setDepth(10); // <-- ADD DEPTH
+        
         this.controlsText = this.add.text(
             GAME_CONFIG.WIDTH / 2, GAME_CONFIG.HEIGHT - 30,
             'P1: WASD+F,G,H | P2: Arrows+.,,/ | R to Restart | ESC to Quit',
             { fontSize: '18px', fill: '#FFFFFF', fontFamily: 'Arial' }
         );
-        this.controlsText.setOrigin(0.5);
+        this.controlsText.setOrigin(0.5).setDepth(10); // <-- ADD DEPTH
         
         // Damage text objects
         this.p1DamageText = this.add.text(0, 0, '', {
             fontSize: '24px', fill: '#FFFFFF', fontFamily: 'Arial'
-        });
+        }).setDepth(10); // <-- ADD DEPTH
+        
         this.p2DamageText = this.add.text(0, 0, '', {
             fontSize: '24px', fill: '#FFFFFF', fontFamily: 'Arial'
-        });
+        }).setDepth(10); // <-- ADD DEPTH
+        
         this.p1NameText = this.add.text(0, 0, '', {
             fontSize: '18px', fill: '#FFFFFF', fontFamily: 'Arial'
-        });
+        }).setDepth(10); // <-- ADD DEPTH
+        
         this.p2NameText = this.add.text(0, 0, '', {
             fontSize: '18px', fill: '#FFFFFF', fontFamily: 'Arial'
-        });
+        }).setDepth(10); // <-- ADD DEPTH
     }
     
     update() {

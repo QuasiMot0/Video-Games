@@ -53,9 +53,9 @@ class Projectile extends Phaser.Physics.Arcade.Sprite {
                 this.lifetime = 150;
                 break;
             case "charge_shot":
-                this.radius = 10 + Math.floor(chargeLevel / 10);
-                this.speed = 12 + Math.floor(chargeLevel / 20);
-                this.damage = 8 + Math.floor(chargeLevel / 8);
+                this.radius = 10 + Math.floor(this.chargeLevel / 10);
+                this.speed = 12 + Math.floor(this.chargeLevel / 20);
+                this.damage = 8 + Math.floor(this.chargeLevel / 8);
                 break;
             case "fire_breath":
                 this.radius = 25;
@@ -177,4 +177,4 @@ class Projectile extends Phaser.Physics.Arcade.Sprite {
         super.destroy();
     }
 }
-
+// <-- The extra '}' was removed from here

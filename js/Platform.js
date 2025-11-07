@@ -9,6 +9,7 @@ class Platform {
         
         // Create Phaser rectangle graphics
         this.graphics = scene.add.graphics();
+        this.graphics.setDepth(-5); // <-- ADD THIS LINE (above background, below players)
         this.updateGraphics();
     }
     
