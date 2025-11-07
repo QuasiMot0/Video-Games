@@ -105,8 +105,9 @@ class Projectile:
                           self.radius * 2, self.radius * 2)
 
 class Platform:
-    def __init__(self, x, y, w, h):
+    def __init__(self, x, y, w, h, is_passable=False):
         self.rect = pygame.Rect(x, y, w, h)
+        self.is_passable = is_passable
     
     def draw(self, screen):
         pygame.draw.rect(screen, DARK_GRAY, self.rect)
@@ -186,16 +187,10 @@ class Character:
         else:
             self.vx *= 0.8
         
-        # --- CHANGED: Drop-down logic (Press Down only) ---
-        if self.on_ground and keys[self.controls['down']]:
-            self.y += 5 # Nudge down to fall through platform
-            self.on_ground = False
-            self.jumps = 1 # Keep 1 jump
-        # --- End Change ---
         
         # Jump
         if keys[self.controls['jump']] and self.jumps > 0:
-            self.vy = -15
+            self.vy = -18 # Higher jump
             self.jumps -= 1
             self.on_ground = False
         
@@ -347,6 +342,7 @@ class Character:
         self.vy = 0
 
     
+    # --- PLATFORM LOGIC WITH DROP-THROUGH ---
     def update(self, platforms, keys):
         self.x_previous = self.x 
         self.y_previous = self.y 
@@ -354,47 +350,63 @@ class Character:
         if self.is_charging:
             self.charge_level = min(100, self.charge_level + 1)
             
+        was_on_ground = self.on_ground
+        
+        # --- X-AXIS MOVEMENT & COLLISION ---
+        self.vx *= AIR_RESISTANCE
+        self.x += self.vx
+        rect = self.get_rect() 
+        
+        for platform in platforms:
+            if rect.colliderect(platform.rect):
+                if not (self.y_previous + self.h <= platform.rect.top or \
+                        self.y_previous >= platform.rect.bottom):
+                    
+                    if self.vx > 0 and self.x_previous + self.w <= platform.rect.left:
+                        self.x = platform.rect.left - self.w
+                        self.vx = 0
+                    
+                    elif self.vx < 0 and self.x_previous >= platform.rect.right:
+                        self.x = platform.rect.right
+                        self.vx = 0
+
+        # --- Y-AXIS MOVEMENT & COLLISION ---
         if not self.on_ground:
             self.vy += GRAVITY
             if self.type == "mage" and self.vy > 0.5:
                 self.vy -= GRAVITY * 0.4
         
-        self.vx *= AIR_RESISTANCE
-        
-        self.x += self.vx
         self.y += self.vy
+        rect = self.get_rect() 
         
-        was_on_ground = self.on_ground
-        self.on_ground = False
-        rect = self.get_rect()
-        prev_y_bottom = self.y_previous + self.h 
-        prev_x_right = self.x_previous + self.w
+        self.on_ground = False 
+        
+        is_dropping = keys[self.controls['down']] 
         
         for platform in platforms:
             if rect.colliderect(platform.rect):
-                # 1. Check for LANDING
-                if self.vy > 0 and prev_y_bottom <= platform.rect.top:
-                    # Check for drop-through
-                    if not (keys[self.controls['down']]): 
-                        self.y = platform.rect.top - self.h
-                        self.vy = 0
-                        self.on_ground = True
-                        self.jumps = 2
-                        if not was_on_ground: self.vx = 0
                 
-                # 2. Check for HEAD BONKa
-                elif self.vy < 0 and self.y_previous >= platform.rect.bottom:
+                # If platform is passable AND player is holding down...
+                if platform.is_passable and is_dropping:
+                    continue # ...skip collision. Fall through.
+
+                # 1. Check for LANDING (colliding from above) OR IDLE
+                if self.vy >= 0 and self.y_previous + self.h <= platform.rect.top + (self.vy + 2):
+                    self.y = platform.rect.top - self.h
+                    self.vy = 0
+                    self.on_ground = True 
+                    self.jumps = 2
+                    if not was_on_ground: self.vx = 0
+                    break 
+                
+                # 2. Check for HEAD BONK (colliding from below)
+                elif self.vy < 0 and self.y_previous >= platform.rect.bottom - 2:
                     self.y = platform.rect.bottom
                     self.vy = 0
-                
-                # 3. Check for SIDE collisions
-                elif not self.on_ground:
-                    if self.vx > 0 and prev_x_right <= platform.rect.left:
-                        self.x = platform.rect.left - self.w
-                        if was_on_ground: self.vx = 0
-                    elif self.vx < 0 and self.x_previous >= platform.rect.right:
-                        self.x = platform.rect.right
-                        if was_on_ground: self.vx = 0
+                    break 
+        
+        # --- END OF PLATFORM LOGIC ---
+        
         
         # Screen boundaries (KO)
         if self.y > HEIGHT + 100 or self.x < -100 or self.x > WIDTH + 100 or self.y < -100:
@@ -471,6 +483,7 @@ class Character:
     # --- CHARACTER DRAWING FUNCTIONS ---
     
     def draw_warrior(self, screen, body_x, body_y, body_w, body_h, light_color, dark_color):
+        # Body
         pygame.draw.rect(screen, dark_color, (self.x + 10, self.y + 46, 8, 14), border_radius=3)
         pygame.draw.circle(screen, DARK_GRAY, (self.x + 14, self.y + 60), 5)
         pygame.draw.rect(screen, dark_color, (self.x + 22, self.y + 46, 8, 14), border_radius=3)
@@ -478,13 +491,37 @@ class Character:
         pygame.draw.rect(screen, self.color, (body_x, body_y, body_w, body_h), border_radius=5)
         pygame.draw.rect(screen, YELLOW, (body_x, body_y, body_w, body_h), 3, border_radius=5)
         
+        # Head
         head_x, head_y, head_size = self.x + 18, self.y + 10, 14
         pygame.draw.circle(screen, light_color, (head_x, head_y), head_size)
         pygame.draw.circle(screen, YELLOW, (head_x, head_y), head_size, 3)
         if self.facing_right: pygame.draw.circle(screen, BLACK, (head_x + 4, head_y), 3)
         else: pygame.draw.circle(screen, BLACK, (head_x - 4, head_y), 3)
+        
+        # Attack animations
+        if self.is_attacking and self.attack_hitbox:
+            # Check if it's ground pound (hitbox is wide and low)
+            if self.attack_hitbox.width == 100: 
+                # Draw ground pound shockwave
+                shock_rect = self.attack_hitbox
+                pygame.draw.ellipse(screen, YELLOW, shock_rect, 4)
+                pygame.draw.ellipse(screen, ORANGE, shock_rect.inflate(-10, -10), 3)
+            # Otherwise, it's hammer smash
+            else:
+                # Draw hammer
+                handle_x = self.x + 18
+                handle_y = self.y + 25
+                head_x = self.attack_hitbox.centerx
+                head_y = self.attack_hitbox.centery
+                
+                # Draw handle
+                pygame.draw.line(screen, (100, 50, 0), (handle_x, handle_y), (head_x, head_y), 8)
+                # Draw hammer head
+                pygame.draw.rect(screen, GRAY, self.attack_hitbox, border_radius=5)
+                pygame.draw.rect(screen, DARK_GRAY, self.attack_hitbox, 4, border_radius=5)
     
     def draw_ninja(self, screen, body_x, body_y, body_w, body_h, light_color, dark_color):
+        # Body
         pygame.draw.rect(screen, self.color, (self.x + 10, self.y + 46, 8, 14), border_radius=3)
         pygame.draw.circle(screen, BLACK, (self.x + 14, self.y + 60), 4)
         pygame.draw.rect(screen, self.color, (self.x + 22, self.y + 46, 8, 14), border_radius=3)
@@ -492,11 +529,33 @@ class Character:
         pygame.draw.rect(screen, self.color, (body_x, body_y, body_w, body_h), border_radius=5)
         pygame.draw.rect(screen, BLACK, (body_x, body_y, body_w, body_h), 2, border_radius=5)
         
+        # Head
         head_x, head_y, head_size = self.x + 18, self.y + 10, 14
         pygame.draw.circle(screen, light_color, (head_x, head_y), head_size)
         pygame.draw.rect(screen, BLACK, (head_x - 12, head_y - 4, 24, 8))
         if self.facing_right: pygame.draw.circle(screen, CYAN, (head_x + 4, head_y - 2), 3)
         else: pygame.draw.circle(screen, CYAN, (head_x - 4, head_y - 2), 3)
+        
+        # Attack animations
+        if self.is_attacking:
+            # Quick Slash (has a hitbox)
+            if self.attack_hitbox:
+                # Draw a white slash effect
+                start_pos = self.attack_hitbox.topleft if self.facing_right else self.attack_hitbox.topright
+                end_pos = self.attack_hitbox.bottomright if self.facing_right else self.attack_hitbox.bottomleft
+                mid_pos1 = (start_pos[0], end_pos[1])
+                mid_pos2 = (end_pos[0], start_pos[1])
+                
+                pygame.draw.line(screen, WHITE, mid_pos1, mid_pos2, 4)
+                pygame.draw.line(screen, CYAN, mid_pos1, mid_pos2, 2)
+            
+            # Shadow Dash (no hitbox, but is_attacking is True)
+            else:
+                # Draw a translucent "shadow"
+                shadow_rect = pygame.Rect(self.x_previous, self.y_previous, self.w, self.h)
+                s = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
+                s.fill((50, 50, 200, 100)) # Translucent blue
+                screen.blit(s, shadow_rect.topleft)
         
     def draw_hunter(self, screen, body_x, body_y, body_w, body_h, light_color, dark_color):
         pygame.draw.rect(screen, dark_color, (self.x + 10, self.y + 46, 8, 14), border_radius=3)
@@ -585,7 +644,7 @@ def draw_char_select_screen(screen, char_list, p1_cursor, p2_cursor, p1_locked, 
 # --- MAIN GAME ---
 
 def main():
-    # --- CHANGED: Pokémon Stadium-style platform layout ---
+    # --- Pokémon Stadium-style platform layout ---
     main_stage_width = WIDTH * 0.6
     main_stage_x = (WIDTH - main_stage_width) / 2
     main_stage_y = HEIGHT - 150
@@ -595,14 +654,13 @@ def main():
     plat_y = HEIGHT - 350 # Higher than before
     
     platforms = [
-        # Main Stage
-        Platform(main_stage_x, main_stage_y, main_stage_width, 20),
-        # Left Platform
-        Platform(main_stage_x + 50, plat_y, plat_width, plat_height),
-        # Right Platform
-        Platform(main_stage_x + main_stage_width - plat_width - 50, plat_y, plat_width, plat_height),
+        # Main Stage (Solid)
+        Platform(main_stage_x, main_stage_y, main_stage_width, 20, is_passable=False),
+        # Left Platform (Passable)
+        Platform(main_stage_x + 50, plat_y, plat_width, plat_height, is_passable=True),
+        # Right Platform (Passable)
+        Platform(main_stage_x + main_stage_width - plat_width - 50, plat_y, plat_width, plat_height, is_passable=True),
     ]
-    # --- End Change ---
     
     player1_controls = {'left': pygame.K_a, 'right': pygame.K_d, 'jump': pygame.K_w, 'down': pygame.K_s,
                         'attack1': pygame.K_f, 'attack2': pygame.K_g, 'special': pygame.K_h}
@@ -627,18 +685,17 @@ def main():
     projectiles = []
     winner = None
     
-    # --- CHANGED: Start positions based on new main stage ---
-    main_platform_y = main_stage_y
+    # --- Start positions based on HIGHER platforms ---
     new_char_height = 55
     new_char_width = 35
-    start_y = main_platform_y - new_char_height
     
-    platform_x_start = main_stage_x
-    platform_x_end = main_stage_x + main_stage_width
+    left_plat = platforms[1] 
+    right_plat = platforms[2] 
     
-    p1_start_x = platform_x_start + (main_stage_width * 0.25)
-    p2_start_x = platform_x_end - new_char_width - (main_stage_width * 0.25)
-    # --- End Change ---
+    start_y = left_plat.rect.top - new_char_height
+    p1_start_x = left_plat.rect.centerx - (new_char_width / 2)
+    p2_start_x = right_plat.rect.centerx - (new_char_width / 2)
+    # --- End Start Pos ---
     
     running = True
     while running:
@@ -649,10 +706,8 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             
-            # --- CHANGED: Quit Command ---
             if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                 running = False
-            # --- End Change ---
                 
             if game_state == "char_select":
                 if event.type == pygame.KEYDOWN:
@@ -712,6 +767,7 @@ def main():
                 if not projectile.active:
                     projectiles.remove(projectile)
             
+            # --- CHANGED: Attack logic ---
             for i, attacker in enumerate(characters):
                 if attacker.is_attacking and attacker.attack_hitbox:
                     for j, victim in enumerate(characters):
@@ -726,9 +782,15 @@ def main():
                                     
                                 victim.take_damage(dmg, attacker.x, attacker.y)
                                 
-                                if not (attacker.type == "knight" and attacker.special_cooldown > 20):
-                                    attacker.is_attacking = False
-                                    attacker.attack_hitbox = None
+                                # --- THIS BLOCK WAS REMOVED ---
+                                # This was stopping the animation early.
+                                # The animation now stops when attack_frame hits 0.
+                                #
+                                # if not (attacker.type == "knight" and attacker.special_cooldown > 20):
+                                #     attacker.is_attacking = False
+                                #     attacker.attack_hitbox = None
+                                # --- End Removal ---
+            # --- End Change ---
             
             for projectile in projectiles[:]:
                 for char in characters:
@@ -758,7 +820,6 @@ def main():
             screen.blit(p1_stock, (10, 10))
             screen.blit(p2_stock, (WIDTH - 200, 10))
             
-            # --- CHANGED: Updated controls text ---
             controls_text = small_font.render("P1: WASD+F,G,H (S to Drop) | P2: Arrows+.,,/ (Down to Drop) | ESC to QUIT", True, WHITE)
             controls_text_width = controls_text.get_width()
             screen.blit(controls_text, (WIDTH // 2 - controls_text_width // 2, HEIGHT - 30))
