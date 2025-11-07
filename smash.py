@@ -67,12 +67,20 @@ class Projectile:
             self.radius = 10 + int(charge_level / 10)
             self.speed = 12 + int(charge_level / 20)
             self.damage = 8 + int(charge_level / 8)
+        elif projectile_type == "fire_breath":
+            self.radius = 25
+            self.speed = 3
+            self.damage = 14
+            self.lifetime = 25 # Short range
     
     def update(self):
         self.x += self.speed * self.direction
         if self.type == "ice_shard":
             self.vy += 0.3
             self.y += self.vy
+        
+        if self.type == "fire_breath":
+            self.radius = max(5, self.radius - 1) # Shrinks
         
         self.lifetime -= 1
         if self.lifetime <= 0 or self.x < -50 or self.x > WIDTH + 50 or self.y > HEIGHT + 50:
@@ -99,6 +107,16 @@ class Projectile:
             pygame.draw.circle(screen, GREEN, (int(self.x), int(self.y)), self.radius)
             pygame.draw.circle(screen, YELLOW, (int(self.x), int(self.y)), int(self.radius * 0.7))
             pygame.draw.circle(screen, WHITE, (int(self.x), int(self.y)), int(self.radius * 0.3))
+        elif self.type == "fire_breath":
+            # Draw a cloud of fire particles
+            color1 = (255, 100, 0, 150) # Orange
+            color2 = (255, 255, 0, 100) # Yellow
+            
+            s = pygame.Surface((self.radius*2, self.radius*2), pygame.SRCALPHA)
+            pygame.draw.circle(s, color1, (self.radius, self.radius), self.radius)
+            pygame.draw.circle(s, color2, (self.radius+5, self.radius), int(self.radius/2))
+            pygame.draw.circle(s, color2, (self.radius-5, self.radius), int(self.radius/2))
+            screen.blit(s, (self.x - self.radius, self.y - self.radius))
     
     def get_rect(self):
         return pygame.Rect(self.x - self.radius, self.y - self.radius, 
@@ -165,6 +183,12 @@ class Character:
             self.move_speed = 4.0
             self.attack1_damage = 0
             self.name = "Mage"
+        elif character_type == "beast":
+            self.move_speed = 4.0 # Slow
+            self.attack1_damage = 22 # Strong
+            self.attack2_damage = 14
+            self.special_damage = 25
+            self.name = "Beast"
         
     def get_rect(self):
         return pygame.Rect(self.x, self.y, self.w, self.h)
@@ -201,6 +225,7 @@ class Character:
             elif self.type == "hunter": self.missile(projectiles)
             elif self.type == "knight": self.forward_slash()
             elif self.type == "mage": self.arcane_orb(projectiles)
+            elif self.type == "beast": self.beast_claw()
         
         # Attack 2
         if keys[self.controls['attack2']] and self.attack2_cooldown == 0:
@@ -209,6 +234,7 @@ class Character:
             elif self.type == "hunter": self.start_charge()
             elif self.type == "knight": self.shield_breaker()
             elif self.type == "mage": self.fire_blast(projectiles)
+            elif self.type == "beast": self.beast_fire(projectiles)
         
         # Special move
         if keys[self.controls['special']] and self.special_cooldown == 0:
@@ -217,6 +243,7 @@ class Character:
             elif self.type == "hunter": self.screw_attack()
             elif self.type == "knight": self.dancing_blade(keys)
             elif self.type == "mage": self.teleport(keys)
+            elif self.type == "beast": self.beast_bomb()
     
     # --- WARRIOR MOVES ---
     def hammer_smash(self):
@@ -341,6 +368,31 @@ class Character:
         self.vx = 0
         self.vy = 0
 
+    # --- BEAST MOVES ---
+    def beast_claw(self):
+        self.is_attacking = True
+        self.attack1_cooldown = 35
+        self.attack_frame = 12
+        self.vx = 10 if self.facing_right else -10 # Lunge
+        offset = 40 if self.facing_right else -60
+        self.attack_hitbox = pygame.Rect(self.x + offset, self.y + 10, 50, 35)
+
+    def beast_fire(self, projectiles):
+        self.attack2_cooldown = 60
+        direction = 1 if self.facing_right else -1
+        offset = 40 if self.facing_right else -30
+        projectile = Projectile(self.x + offset, self.y + 20, direction, self, "fire_breath")
+        projectiles.append(projectile)
+        self.vx = -2 * direction # Recoil
+    
+    def beast_bomb(self):
+        self.vy = -10 # Leap
+        self.vx = 8 if self.facing_right else -8
+        self.special_cooldown = 70
+        self.is_attacking = True
+        self.attack_frame = 40 # Long animation
+        self.attack_hitbox = pygame.Rect(self.x - 25, self.y + 45, self.w + 50, 30)
+
     
     # --- PLATFORM LOGIC WITH DROP-THROUGH ---
     def update(self, platforms, keys):
@@ -423,13 +475,18 @@ class Character:
             if self.type == "knight" and self.name == "dancing_blade" and self.attack_frame > 0:
                  self.attack_hitbox.x = self.x + (40 if self.facing_right else -70)
                  self.attack_hitbox.y = self.y + 10
+            elif self.type == "beast" and self.special_cooldown > 30 and self.attack_frame > 0:
+                # Update hitbox position as we fall
+                self.attack_hitbox.x = self.x - 25
+                self.attack_hitbox.y = self.y + 45
             elif self.attack_frame == 0:
                 self.is_attacking = False
                 self.attack_hitbox = None
     
-    def take_damage(self, damage_amount, attacker_x, attacker_y):
+    def take_damage(self, damage_amount, attacker_x, attacker_y, hitstun_multiplier=2.5):
         self.damage += damage_amount
-        knockback_strength = (self.damage / 10) + 5
+        knockback_strength = (self.damage / 8) + 5
+        self.hitstun = int(damage_amount * hitstun_multiplier) # Use the specific multiplier
         
         dx = self.x - attacker_x
         dy = self.y - attacker_y
@@ -439,7 +496,6 @@ class Character:
         
         self.vx = dx * knockback_strength
         self.vy = dy * knockback_strength - 5
-        self.hitstun = int(damage_amount * 1.5)
         self.is_charging = False
         self.charge_level = 0
     
@@ -451,7 +507,7 @@ class Character:
             self.vx = 0; self.vy = 0
             self.damage = 0; self.hitstun = 0
     
-    def draw(self, screen):
+    def draw(self, screen, draw_ui=False):
         r, g, b = self.color
         light_color = (min(255, r + 40), min(255, g + 40), min(255, b + 40))
         dark_color = (max(0, r - 40), max(0, g - 40), max(0, b - 40))
@@ -463,22 +519,24 @@ class Character:
         elif self.type == "hunter": self.draw_hunter(screen, body_x, body_y, body_w, body_h, light_color, dark_color)
         elif self.type == "knight": self.draw_knight(screen, body_x, body_y, body_w, body_h, light_color, dark_color)
         elif self.type == "mage": self.draw_mage(screen, body_x, body_y, body_w, body_h, light_color, dark_color)
+        elif self.type == "beast": self.draw_beast(screen, body_x, body_y, body_w, body_h, light_color, dark_color)
         
-        damage_text = font.render(f"{int(self.damage)}%", True, WHITE)
-        damage_bg = pygame.Rect(self.x - 10, self.y - 40, damage_text.get_width() + 20, 30)
-        pygame.draw.rect(screen, BLACK, damage_bg)
-        pygame.draw.rect(screen, self.color, damage_bg, 2)
-        screen.blit(damage_text, (self.x, self.y - 35))
-        
-        name_text = small_font.render(self.name, True, WHITE)
-        screen.blit(name_text, (self.x - 5, self.y - 55))
-        
-        if self.is_charging and self.charge_level > 0:
-            charge_bar_rect = pygame.Rect(self.x, self.y + self.h + 5, 35, 8)
-            pygame.draw.rect(screen, DARK_GRAY, charge_bar_rect)
-            charge_width = (self.charge_level / 100) * 35
-            pygame.draw.rect(screen, GREEN, (self.x, self.y + self.h + 5, charge_width, 8))
-            pygame.draw.rect(screen, WHITE, charge_bar_rect, 1)
+        if not draw_ui:
+            damage_text = font.render(f"{int(self.damage)}%", True, WHITE)
+            damage_bg = pygame.Rect(self.x - 10, self.y - 40, damage_text.get_width() + 20, 30)
+            pygame.draw.rect(screen, BLACK, damage_bg)
+            pygame.draw.rect(screen, self.color, damage_bg, 2)
+            screen.blit(damage_text, (self.x, self.y - 35))
+            
+            name_text = small_font.render(self.name, True, WHITE)
+            screen.blit(name_text, (self.x - 5, self.y - 55))
+            
+            if self.is_charging and self.charge_level > 0:
+                charge_bar_rect = pygame.Rect(self.x, self.y + self.h + 5, 35, 8)
+                pygame.draw.rect(screen, DARK_GRAY, charge_bar_rect)
+                charge_width = (self.charge_level / 100) * 35
+                pygame.draw.rect(screen, GREEN, (self.x, self.y + self.h + 5, charge_width, 8))
+                pygame.draw.rect(screen, WHITE, charge_bar_rect, 1)
 
     # --- CHARACTER DRAWING FUNCTIONS ---
     
@@ -572,6 +630,20 @@ class Character:
         pygame.draw.rect(screen, GREEN, (cannon_x, body_y + 8, 10, 12), border_radius=2)
         pygame.draw.circle(screen, GREEN, (cannon_x + (10 if self.facing_right else 0), body_y + 14), 8)
 
+        # Add Screw Attack animation
+        if self.is_attacking and self.attack_hitbox:
+            # Check if it's the screw attack (width is self.w + 40)
+            if self.attack_hitbox.width == self.w + 40:
+                s = pygame.Surface((self.attack_hitbox.width, self.attack_hitbox.height), pygame.SRCALPHA)
+                s.fill((0, 0, 0, 0)) # Transparent background
+                
+                # Draw spinning energy effect
+                alpha = 100 + (self.attack_frame % 5) * 20 # Flashing effect
+                pygame.draw.ellipse(s, (100, 255, 255, alpha), (0, 0, self.attack_hitbox.width, self.attack_hitbox.height))
+                pygame.draw.ellipse(s, (255, 255, 255, 200), (5, 5, self.attack_hitbox.width-10, self.attack_hitbox.height-10), 3)
+                
+                screen.blit(s, self.attack_hitbox.topleft)
+
     def draw_knight(self, screen, body_x, body_y, body_w, body_h, light_color, dark_color):
         pygame.draw.rect(screen, GRAY, (self.x + 10, self.y + 46, 8, 14), border_radius=3)
         pygame.draw.circle(screen, DARK_GRAY, (self.x + 14, self.y + 60), 5)
@@ -584,9 +656,23 @@ class Character:
         pygame.draw.circle(screen, GRAY, (head_x, head_y), head_size)
         pygame.draw.rect(screen, DARK_GRAY, (head_x - 1, head_y - 2, 2, 8))
         
-        if self.is_attacking:
-            sword_x = self.x + 40 if self.facing_right else self.x - 10
-            pygame.draw.line(screen, GRAY, (sword_x, self.y + 30), (sword_x + (40 if self.facing_right else -40), self.y + 30), 6)
+        # Improved Knight attack animations
+        if self.is_attacking and self.attack_hitbox:
+            # Check for Shield Breaker (tall hitbox)
+            if self.attack_hitbox.height > 70:
+                # Draw vertical slash
+                s = pygame.Surface((self.attack_hitbox.width, self.attack_hitbox.height), pygame.SRCALPHA)
+                s.fill((0,0,0,0))
+                pygame.draw.rect(s, (100, 100, 255, 200), (0,0, self.attack_hitbox.width, self.attack_hitbox.height), border_radius=5)
+                pygame.draw.rect(s, (255, 255, 255, 220), (5,5, self.attack_hitbox.width-10, self.attack_hitbox.height-10), 4, border_radius=5)
+                screen.blit(s, self.attack_hitbox.topleft)
+            else:
+                # Draw horizontal slash (Forward Slash, Dancing Blade)
+                s = pygame.Surface((self.attack_hitbox.width, self.attack_hitbox.height), pygame.SRCALPHA)
+                s.fill((0,0,0,0))
+                pygame.draw.ellipse(s, (100, 100, 255, 200), (0,0, self.attack_hitbox.width, self.attack_hitbox.height))
+                pygame.draw.ellipse(s, (255, 255, 255, 220), (5,5, self.attack_hitbox.width-10, self.attack_hitbox.height-10), 4)
+                screen.blit(s, self.attack_hitbox.topleft)
             
     def draw_mage(self, screen, body_x, body_y, body_w, body_h, light_color, dark_color):
         draw_y = self.y + math.sin(pygame.time.get_ticks() / 200) * 3
@@ -600,9 +686,82 @@ class Character:
         pygame.draw.line(screen, (100, 50, 0), (staff_x, draw_y + 5), (staff_x, draw_y + 50), 4)
         pygame.draw.circle(screen, PURPLE, (staff_x, draw_y + 5), 6)
 
+        # Add Teleport animation
+        # Draw effect for 5 frames after teleporting
+        if self.special_cooldown > 45: 
+            # Draw "reappear" effect at new location
+            center_x, center_y = int(self.x + self.w/2), int(self.y + self.h/2)
+            pygame.draw.circle(screen, PURPLE, (center_x, center_y), 30, 3)
+            pygame.draw.circle(screen, WHITE, (center_x + 10, center_y), 5)
+            pygame.draw.circle(screen, WHITE, (center_x - 10, center_y), 5)
+            
+            # Draw "disappear" effect at old location
+            prev_x, prev_y = int(self.x_previous + self.w/2), int(self.y_previous + self.h/2)
+            pygame.draw.circle(screen, PURPLE, (prev_x, prev_y), 30, 3)
+
+    def draw_beast(self, screen, body_x, body_y, body_w, body_h, light_color, dark_color):
+        # Body (make it wider)
+        body_x -= 5
+        body_w += 10
+        body_y -= 5
+        body_h += 5
+        pygame.draw.rect(screen, dark_color, (self.x + 8, self.y + 46, 10, 14), border_radius=3)
+        pygame.draw.circle(screen, DARK_GRAY, (self.x + 13, self.y + 60), 6)
+        pygame.draw.rect(screen, dark_color, (self.x + 22, self.y + 46, 10, 14), border_radius=3)
+        pygame.draw.circle(screen, DARK_GRAY, (self.x + 27, self.y + 60), 6)
+        pygame.draw.rect(screen, self.color, (body_x, body_y, body_w, body_h), border_radius=5)
+        
+        # Shell/Spikes
+        pygame.draw.rect(screen, (50, 150, 50), (body_x + 5, body_y + 5, body_w - 10, body_h - 10), border_radius=5)
+        pygame.draw.polygon(screen, YELLOW, [(self.x+5, self.y + 20), (self.x+10, self.y+15), (self.x+15, self.y+20)])
+        pygame.draw.polygon(screen, YELLOW, [(self.x+20, self.y + 20), (self.x+25, self.y+15), (self.x+30, self.y+20)])
+        
+        # Head
+        head_x, head_y, head_size = self.x + 18, self.y + 10, 16
+        pygame.draw.circle(screen, light_color, (head_x, head_y), head_size)
+        pygame.draw.rect(screen, BLACK, (head_x - 10, head_y + 2, 20, 5))
+        if self.facing_right: pygame.draw.circle(screen, RED, (head_x + 5, head_y - 2), 4)
+        else: pygame.draw.circle(screen, RED, (head_x - 5, head_y - 2), 4)
+        
+        # Refined Beast animations
+        if self.is_attacking and self.attack_hitbox:
+            # Beast Bomb
+            if self.special_cooldown > 30: 
+                # Make it pulse
+                pulse_alpha = 100 + (self.attack_frame % 10) * 15
+                s = pygame.Surface((self.attack_hitbox.width, self.attack_hitbox.height), pygame.SRCALPHA)
+                s.fill((0, 0, 0, 0))
+                pygame.draw.ellipse(s, (255, 100, 0, pulse_alpha), (0, 0, self.attack_hitbox.width, self.attack_hitbox.height))
+                pygame.draw.ellipse(s, (255, 255, 0, pulse_alpha), (10, 5, self.attack_hitbox.width-20, self.attack_hitbox.height-10))
+                screen.blit(s, self.attack_hitbox.topleft)
+            # Beast Claw
+            else:
+                # Thicker claws
+                s = pygame.Surface((self.attack_hitbox.width, self.attack_hitbox.height), pygame.SRCALPHA)
+                s.fill((0,0,0,0))
+                p1 = (0, 5)
+                p2 = (self.attack_hitbox.width, self.attack_hitbox.height - 5)
+                pygame.draw.line(s, (255, 255, 255, 200), p1, p2, 6)
+                pygame.draw.line(s, (255, 255, 255, 200), (0, self.attack_hitbox.height/2), (self.attack_hitbox.width, self.attack_hitbox.height/2), 6)
+                pygame.draw.line(s, (255, 255, 255, 200), (0, self.attack_hitbox.height - 5), (self.attack_hitbox.width, 5), 6)
+                screen.blit(s, self.attack_hitbox.topleft)
+
+
 # --- HELPER FUNCTIONS ---
 
+# --- CHANGED: Added unique idle animations and a locked-in animation ---
 def draw_char_select_screen(screen, char_list, p1_cursor, p2_cursor, p1_locked, p2_locked, char_colors):
+    
+    # Create a dictionary of dummy characters just for previews
+    char_previews = {
+        "warrior": Character(0, 0, char_colors["warrior"], {}, "warrior"),
+        "ninja": Character(0, 0, char_colors["ninja"], {}, "ninja"),
+        "hunter": Character(0, 0, char_colors["hunter"], {}, "hunter"),
+        "knight": Character(0, 0, char_colors["knight"], {}, "knight"),
+        "mage": Character(0, 0, char_colors["mage"], {}, "mage"),
+        "beast": Character(0, 0, char_colors["beast"], {}, "beast")
+    }
+
     screen.fill((20, 20, 40))
     title_text = title_font.render("CHOOSE YOUR FIGHTER", True, WHITE)
     screen.blit(title_text, (WIDTH // 2 - title_text.get_width() // 2, 50))
@@ -618,6 +777,46 @@ def draw_char_select_screen(screen, char_list, p1_cursor, p2_cursor, p1_locked, 
         
         pygame.draw.rect(screen, char_colors[char_name], box_rect)
         pygame.draw.rect(screen, DARK_GRAY, box_rect, 5)
+        
+        # --- Draw the character preview sprite ---
+        preview_char = char_previews[char_name]
+        
+        # --- Animation Logic ---
+        current_time = pygame.time.get_ticks()
+        base_x = box_rect.centerx - preview_char.w / 2
+        base_y = box_rect.centery - preview_char.h / 2 + 10 # Base Y position
+        x_offset = 0
+        y_offset = 0
+
+        # 1. Set idle animation based on personality
+        if char_name == "warrior":
+            y_offset = math.sin(current_time / 200) * 3 # Solid bob
+        elif char_name == "ninja":
+            y_offset = math.sin(current_time / 100) * 2 # Fast bob
+        elif char_name == "hunter":
+            x_offset = math.sin(current_time / 300) * 4 # Side-to-side scan
+        elif char_name == "knight":
+            y_offset = math.sin(current_time / 500) * 2 # Slow, steady bob
+        elif char_name == "mage":
+            y_offset = math.sin(current_time / 250) * 4 # Floating
+        elif char_name == "beast":
+            y_offset = math.sin(current_time / 150) * 4 # Heavy bounce
+
+        # 2. Check if this character is locked in
+        is_p1_locked_here = (i == p1_cursor and p1_locked)
+        is_p2_locked_here = (i == p2_cursor and p2_locked)
+
+        # 3. Override with locked-in animation if necessary
+        if is_p1_locked_here or is_p2_locked_here:
+            x_offset = 0 # Stop any side-to-side
+            y_offset = math.sin(current_time / 120) * 6 # Faster, bigger bounce
+
+        preview_char.x = base_x + x_offset
+        preview_char.y = base_y + y_offset
+        # --- End Animation Logic ---
+        
+        preview_char.draw(screen, draw_ui=True) # Call with draw_ui=True
+        # --- End preview sprite draw ---
         
         name_text = font.render(char_name.upper(), True, WHITE)
         screen.blit(name_text, (x + box_size // 2 - name_text.get_width() // 2, start_y + box_size + 10))
@@ -640,6 +839,8 @@ def draw_char_select_screen(screen, char_list, p1_cursor, p2_cursor, p1_locked, 
     p2_status_text = font.render(p2_status, True, BLUE)
     screen.blit(p1_status_text, (start_x, start_y + box_size + 60))
     screen.blit(p2_status_text, (start_x + (len(char_list) - 1) * (box_size + gap) - p2_status_text.get_width() + box_size, start_y + box_size + 60))
+# --- End Change ---
+
 
 # --- MAIN GAME ---
 
@@ -667,13 +868,14 @@ def main():
     player2_controls = {'left': pygame.K_LEFT, 'right': pygame.K_RIGHT, 'jump': pygame.K_UP, 'down': pygame.K_DOWN,
                         'attack1': pygame.K_PERIOD, 'attack2': pygame.K_COMMA, 'special': pygame.K_SLASH}
     
-    char_list = ["warrior", "ninja", "hunter", "knight", "mage"]
+    char_list = ["warrior", "ninja", "hunter", "knight", "mage", "beast"]
     char_colors = {
         "warrior": (200, 50, 50),
         "ninja": (50, 50, 200),
         "hunter": (50, 180, 50),
         "knight": (180, 180, 180),
-        "mage": (180, 50, 200)
+        "mage": (180, 50, 200),
+        "beast": (100, 200, 50) # Bowser green
     }
     
     game_state = "char_select"
@@ -767,30 +969,31 @@ def main():
                 if not projectile.active:
                     projectiles.remove(projectile)
             
-            # --- CHANGED: Attack logic ---
+            # --- Attack logic ---
             for i, attacker in enumerate(characters):
                 if attacker.is_attacking and attacker.attack_hitbox:
                     for j, victim in enumerate(characters):
                         if i != j and attacker.attack_hitbox.colliderect(victim.get_rect()):
                             if victim.hitstun == 0:
-                                dmg = attacker.attack1_damage
+                                dmg = attacker.attack1_damage # Default damage
+                                stun_multiplier = 2.5 # Default stun
+                                
+                                # Get specific damage for multi-hit/special moves
                                 if attacker.type == 'knight':
                                     if attacker.attack_frame > 15: dmg = attacker.attack2_damage
                                     elif attacker.special_cooldown > 20: dmg = attacker.special_damage
                                 elif attacker.type == 'hunter':
                                     dmg = attacker.special_damage
+                                elif attacker.type == 'beast':
+                                    if attacker.special_cooldown > 30: # Beast Bomb
+                                        dmg = attacker.special_damage
+                                        stun_multiplier = 1.0 # <-- HERE IS THE CHANGE
+                                    else: # Beast Claw
+                                        dmg = attacker.attack1_damage
                                     
-                                victim.take_damage(dmg, attacker.x, attacker.y)
+                                victim.take_damage(dmg, attacker.x, attacker.y, stun_multiplier) # Pass the multiplier
                                 
-                                # --- THIS BLOCK WAS REMOVED ---
-                                # This was stopping the animation early.
-                                # The animation now stops when attack_frame hits 0.
-                                #
-                                # if not (attacker.type == "knight" and attacker.special_cooldown > 20):
-                                #     attacker.is_attacking = False
-                                #     attacker.attack_hitbox = None
-                                # --- End Removal ---
-            # --- End Change ---
+                                # Attack now finishes based on attack_frame timer
             
             for projectile in projectiles[:]:
                 for char in characters:
@@ -813,7 +1016,7 @@ def main():
             
             for platform in platforms: platform.draw(screen)
             for projectile in projectiles: projectile.draw(screen)
-            for char in characters: char.draw(screen)
+            for char in characters: char.draw(screen) # draw_ui defaults to False
             
             p1_stock = small_font.render(f"P1 ({player1.name}) Stock: {player1.stock}", True, RED)
             p2_stock = small_font.render(f"P2 ({player2.name}) Stock: {player2.stock}", True, BLUE)
