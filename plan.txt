@@ -114,25 +114,6 @@ Result: Adding a new character is as simple as creating a new JSON file and its 
 ---
 
 ==============================================
-Phase 3: Core Gameplay Tweak (Platform Logic)
-==============================================
-
-This addresses your request to "make the platforms always so that you can never fall through."
-
-3.1 The Problem
------------------
-Your current code has a feature where pressing "Down" allows you to drop through a platform.
-(Code snippet: `if self.on_ground and keys[self.controls['down']]: ...`)
-
-3.2 Action Plan (Implementation)
-----------------------------------
-1.  During the Phase 1 (JavaScript) port: Simply DO NOT re-implement this feature.
-2.  Phaser's built-in physics collider (`this.physics.add.collider(player, platforms);`) is solid by default. It will not allow a player to fall through.
-3.  If you *do* want to add this feature back later, Phaser has a "one-way collision" or "jumping-through-platform" feature that you can enable, which is much more robust than your current manual check.
-
----
-
-==============================================
 Phase 4: Implementing Online Multiplayer
 ==============================================
 
@@ -206,10 +187,10 @@ The Final Connection: In your Client's game.js (on GitHub Pages), make sure the 
 Final Project Roadmap
 ==============================================
 
-* [ ] Phase 1: Port
-    * [ ] Set up a new JavaScript project with Phaser.js.
-    * [ ] Re-implement all core classes (Character, Projectile, Platform) in JavaScript.
-    * [ ] Re-implement all physics and collisions using Phaser's built-in engine.
+* [x] ~~Phase 1: Port~~
+    * [x] ~~Set up a new JavaScript project with Phaser.js.~~
+    * [x] ~~Re-implement all core classes (Character, Projectile, Platform) in JavaScript.~~
+    * [x] ~~Re-implement all physics and collisions using Phaser's built-in engine.~~
 * [ ] Phase 2: Refactor
     * [ ] Design the JSON structure for characters.
     * [ ] Design the JSON structure for stages.
