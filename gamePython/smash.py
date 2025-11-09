@@ -158,6 +158,7 @@ class Character:
         self.attack_frame = 0
         self.is_charging = False
         self.charge_level = 0
+        self.current_attack_name = None # <-- CHANGED: Added to track attacks
         
         # Character-specific stats
         if character_type == "warrior":
@@ -223,7 +224,13 @@ class Character:
             if self.type == "warrior": self.hammer_smash()
             elif self.type == "ninja": self.quick_slash()
             elif self.type == "hunter": self.missile(projectiles)
-            elif self.type == "knight": self.forward_slash()
+            # --- CHANGED: Knight attack 1 logic ---
+            elif self.type == "knight":
+                if self.on_ground:
+                    self.forward_slash()
+                else:
+                    self.forward_air() # New aerial attack
+            # --- End Change ---
             elif self.type == "mage": self.arcane_orb(projectiles)
             elif self.type == "beast": self.beast_claw()
         
@@ -250,6 +257,7 @@ class Character:
         self.is_attacking = True
         self.attack1_cooldown = 45
         self.attack_frame = 15
+        self.current_attack_name = "hammer_smash"
         offset = 50 if self.facing_right else -50
         self.attack_hitbox = pygame.Rect(self.x + offset, self.y + 10, 45, 45)
     
@@ -266,6 +274,7 @@ class Character:
         self.special_cooldown = 60
         self.is_attacking = True
         self.attack_frame = 30
+        self.current_attack_name = "ground_pound"
         self.attack_hitbox = pygame.Rect(self.x - 30, self.y + 50, 100, 30)
     
     # --- NINJA MOVES ---
@@ -273,6 +282,7 @@ class Character:
         self.is_attacking = True
         self.attack1_cooldown = 15
         self.attack_frame = 6
+        self.current_attack_name = "quick_slash"
         offset = 45 if self.facing_right else -45
         self.attack_hitbox = pygame.Rect(self.x + offset, self.y + 15, 35, 30)
     
@@ -289,6 +299,7 @@ class Character:
         self.special_cooldown = 40
         self.is_attacking = True
         self.attack_frame = 15
+        self.current_attack_name = "shadow_dash"
     
     # --- HUNTER MOVES ---
     def missile(self, projectiles):
@@ -321,6 +332,7 @@ class Character:
         self.special_cooldown = 50
         self.is_attacking = True
         self.attack_frame = 25
+        self.current_attack_name = "screw_attack"
         self.attack_hitbox = pygame.Rect(self.x - 20, self.y - 10, self.w + 40, self.h + 20)
         
     # --- KNIGHT MOVES ---
@@ -328,6 +340,7 @@ class Character:
         self.is_attacking = True
         self.attack1_cooldown = 25
         self.attack_frame = 10
+        self.current_attack_name = "forward_slash"
         offset = 40 if self.facing_right else -70
         width = 60
         self.attack_hitbox = pygame.Rect(self.x + offset, self.y + 10, width, 45)
@@ -336,6 +349,7 @@ class Character:
         self.is_attacking = True
         self.attack2_cooldown = 60
         self.attack_frame = 20
+        self.current_attack_name = "shield_breaker"
         offset = 30 if self.facing_right else -60
         width = 50
         self.attack_hitbox = pygame.Rect(self.x + offset, self.y - 20, width, 75)
@@ -346,7 +360,20 @@ class Character:
         self.special_cooldown = 40
         self.is_attacking = True
         self.attack_frame = 20
+        self.current_attack_name = "dancing_blade"
         self.attack_hitbox = pygame.Rect(self.x + (40 if self.facing_right else -70), self.y + 10, 60, 45)
+        
+    # --- CHANGED: Added new Knight attack ---
+    def forward_air(self):
+        self.is_attacking = True
+        self.attack1_cooldown = 25
+        self.attack_frame = 10
+        self.current_attack_name = "forward_air"
+        offset = 40 if self.facing_right else -70
+        width = 60
+        # A hitbox slightly higher than the grounded slash
+        self.attack_hitbox = pygame.Rect(self.x + offset, self.y + 5, width, 50) 
+    # --- End Change ---
         
     # --- MAGE MOVES ---
     def arcane_orb(self, projectiles):
@@ -358,6 +385,7 @@ class Character:
         
     def teleport(self, keys):
         self.special_cooldown = 50
+        self.current_attack_name = "teleport"
         if keys[self.controls['right']]: self.x += 150
         elif keys[self.controls['left']]: self.x -= 150
         elif keys[self.controls['jump']]: self.y -= 150
@@ -373,6 +401,7 @@ class Character:
         self.is_attacking = True
         self.attack1_cooldown = 35
         self.attack_frame = 12
+        self.current_attack_name = "beast_claw"
         self.vx = 10 if self.facing_right else -10 # Lunge
         offset = 40 if self.facing_right else -60
         self.attack_hitbox = pygame.Rect(self.x + offset, self.y + 10, 50, 35)
@@ -391,6 +420,7 @@ class Character:
         self.special_cooldown = 70
         self.is_attacking = True
         self.attack_frame = 40 # Long animation
+        self.current_attack_name = "beast_bomb"
         self.attack_hitbox = pygame.Rect(self.x - 25, self.y + 45, self.w + 50, 30)
 
     
@@ -452,7 +482,7 @@ class Character:
                     break 
                 
                 # 2. Check for HEAD BONK (colliding from below)
-                elif self.vy < 0 and self.y_previous >= platform.rect.bottom - 2:
+                elif self.vy < 0 and not platform.is_passable and self.y_previous >= platform.rect.bottom - 2:
                     self.y = platform.rect.bottom
                     self.vy = 0
                     break 
@@ -472,16 +502,17 @@ class Character:
         # Attack animation
         if self.attack_frame > 0:
             self.attack_frame -= 1
-            if self.type == "knight" and self.name == "dancing_blade" and self.attack_frame > 0:
+            if self.type == "knight" and self.current_attack_name == "dancing_blade" and self.attack_frame > 0:
                  self.attack_hitbox.x = self.x + (40 if self.facing_right else -70)
                  self.attack_hitbox.y = self.y + 10
-            elif self.type == "beast" and self.special_cooldown > 30 and self.attack_frame > 0:
+            elif self.type == "beast" and self.current_attack_name == "beast_bomb" and self.attack_frame > 0:
                 # Update hitbox position as we fall
                 self.attack_hitbox.x = self.x - 25
                 self.attack_hitbox.y = self.y + 45
             elif self.attack_frame == 0:
                 self.is_attacking = False
                 self.attack_hitbox = None
+                self.current_attack_name = None # <-- CHANGED: Reset attack name
     
     def take_damage(self, damage_amount, attacker_x, attacker_y, hitstun_multiplier=2.5):
         self.damage += damage_amount
@@ -558,14 +589,14 @@ class Character:
         
         # Attack animations
         if self.is_attacking and self.attack_hitbox:
-            # Check if it's ground pound (hitbox is wide and low)
-            if self.attack_hitbox.width == 100: 
+            # Check if it's ground pound
+            if self.current_attack_name == "ground_pound": 
                 # Draw ground pound shockwave
                 shock_rect = self.attack_hitbox
                 pygame.draw.ellipse(screen, YELLOW, shock_rect, 4)
                 pygame.draw.ellipse(screen, ORANGE, shock_rect.inflate(-10, -10), 3)
             # Otherwise, it's hammer smash
-            else:
+            elif self.current_attack_name == "hammer_smash":
                 # Draw hammer
                 handle_x = self.x + 18
                 handle_y = self.y + 25
@@ -596,8 +627,8 @@ class Character:
         
         # Attack animations
         if self.is_attacking:
-            # Quick Slash (has a hitbox)
-            if self.attack_hitbox:
+            # Quick Slash
+            if self.current_attack_name == "quick_slash":
                 # Draw a white slash effect
                 start_pos = self.attack_hitbox.topleft if self.facing_right else self.attack_hitbox.topright
                 end_pos = self.attack_hitbox.bottomright if self.facing_right else self.attack_hitbox.bottomleft
@@ -607,8 +638,8 @@ class Character:
                 pygame.draw.line(screen, WHITE, mid_pos1, mid_pos2, 4)
                 pygame.draw.line(screen, CYAN, mid_pos1, mid_pos2, 2)
             
-            # Shadow Dash (no hitbox, but is_attacking is True)
-            else:
+            # Shadow Dash
+            elif self.current_attack_name == "shadow_dash":
                 # Draw a translucent "shadow"
                 shadow_rect = pygame.Rect(self.x_previous, self.y_previous, self.w, self.h)
                 s = pygame.Surface((self.w, self.h), pygame.SRCALPHA)
@@ -631,18 +662,16 @@ class Character:
         pygame.draw.circle(screen, GREEN, (cannon_x + (10 if self.facing_right else 0), body_y + 14), 8)
 
         # Add Screw Attack animation
-        if self.is_attacking and self.attack_hitbox:
-            # Check if it's the screw attack (width is self.w + 40)
-            if self.attack_hitbox.width == self.w + 40:
-                s = pygame.Surface((self.attack_hitbox.width, self.attack_hitbox.height), pygame.SRCALPHA)
-                s.fill((0, 0, 0, 0)) # Transparent background
-                
-                # Draw spinning energy effect
-                alpha = 100 + (self.attack_frame % 5) * 20 # Flashing effect
-                pygame.draw.ellipse(s, (100, 255, 255, alpha), (0, 0, self.attack_hitbox.width, self.attack_hitbox.height))
-                pygame.draw.ellipse(s, (255, 255, 255, 200), (5, 5, self.attack_hitbox.width-10, self.attack_hitbox.height-10), 3)
-                
-                screen.blit(s, self.attack_hitbox.topleft)
+        if self.is_attacking and self.current_attack_name == "screw_attack":
+            s = pygame.Surface((self.attack_hitbox.width, self.attack_hitbox.height), pygame.SRCALPHA)
+            s.fill((0, 0, 0, 0)) # Transparent background
+            
+            # Draw spinning energy effect
+            alpha = 100 + (self.attack_frame % 5) * 20 # Flashing effect
+            pygame.draw.ellipse(s, (100, 255, 255, alpha), (0, 0, self.attack_hitbox.width, self.attack_hitbox.height))
+            pygame.draw.ellipse(s, (255, 255, 255, 200), (5, 5, self.attack_hitbox.width-10, self.attack_hitbox.height-10), 3)
+            
+            screen.blit(s, self.attack_hitbox.topleft)
 
     def draw_knight(self, screen, body_x, body_y, body_w, body_h, light_color, dark_color):
         pygame.draw.rect(screen, GRAY, (self.x + 10, self.y + 46, 8, 14), border_radius=3)
@@ -656,23 +685,49 @@ class Character:
         pygame.draw.circle(screen, GRAY, (head_x, head_y), head_size)
         pygame.draw.rect(screen, DARK_GRAY, (head_x - 1, head_y - 2, 2, 8))
         
-        # Improved Knight attack animations
+        # --- CHANGED: Knight attack animations use self.current_attack_name ---
         if self.is_attacking and self.attack_hitbox:
-            # Check for Shield Breaker (tall hitbox)
-            if self.attack_hitbox.height > 70:
+            # Check for Shield Breaker
+            if self.current_attack_name == "shield_breaker":
                 # Draw vertical slash
                 s = pygame.Surface((self.attack_hitbox.width, self.attack_hitbox.height), pygame.SRCALPHA)
                 s.fill((0,0,0,0))
                 pygame.draw.rect(s, (100, 100, 255, 200), (0,0, self.attack_hitbox.width, self.attack_hitbox.height), border_radius=5)
                 pygame.draw.rect(s, (255, 255, 255, 220), (5,5, self.attack_hitbox.width-10, self.attack_hitbox.height-10), 4, border_radius=5)
                 screen.blit(s, self.attack_hitbox.topleft)
-            else:
-                # Draw horizontal slash (Forward Slash, Dancing Blade)
+            
+            # Check for Forward Air
+            elif self.current_attack_name == "forward_air":
+                # Draw a nice arc
+                s = pygame.Surface((self.attack_hitbox.width, self.attack_hitbox.height), pygame.SRCALPHA)
+                s.fill((0,0,0,0))
+                
+                # We need to create a rect for the arc that is twice the height
+                arc_rect = pygame.Rect(0, 0, self.attack_hitbox.width, self.attack_hitbox.height * 2)
+                
+                # Define start/stop angles for the arc
+                start_angle = math.pi / 2
+                stop_angle = math.pi
+                
+                if not self.facing_right:
+                    start_angle = 0
+                    stop_angle = math.pi / 2
+                    arc_rect.topleft = (0, -self.attack_hitbox.height) # Adjust position for left-facing
+                
+                # Draw the arc
+                pygame.draw.arc(s, (100, 100, 255, 200), arc_rect, start_angle, stop_angle, 8)
+                pygame.draw.arc(s, (255, 255, 255, 220), arc_rect, start_angle, stop_angle, 4)
+                screen.blit(s, self.attack_hitbox.topleft)
+
+            # All other slashes (Forward Slash, Dancing Blade)
+            elif self.current_attack_name in ["forward_slash", "dancing_blade"]:
+                # Draw horizontal slash
                 s = pygame.Surface((self.attack_hitbox.width, self.attack_hitbox.height), pygame.SRCALPHA)
                 s.fill((0,0,0,0))
                 pygame.draw.ellipse(s, (100, 100, 255, 200), (0,0, self.attack_hitbox.width, self.attack_hitbox.height))
                 pygame.draw.ellipse(s, (255, 255, 255, 220), (5,5, self.attack_hitbox.width-10, self.attack_hitbox.height-10), 4)
                 screen.blit(s, self.attack_hitbox.topleft)
+        # --- End Change ---
             
     def draw_mage(self, screen, body_x, body_y, body_w, body_h, light_color, dark_color):
         draw_y = self.y + math.sin(pygame.time.get_ticks() / 200) * 3
@@ -726,7 +781,7 @@ class Character:
         # Refined Beast animations
         if self.is_attacking and self.attack_hitbox:
             # Beast Bomb
-            if self.special_cooldown > 30: 
+            if self.current_attack_name == "beast_bomb": 
                 # Make it pulse
                 pulse_alpha = 100 + (self.attack_frame % 10) * 15
                 s = pygame.Surface((self.attack_hitbox.width, self.attack_hitbox.height), pygame.SRCALPHA)
@@ -735,7 +790,7 @@ class Character:
                 pygame.draw.ellipse(s, (255, 255, 0, pulse_alpha), (10, 5, self.attack_hitbox.width-20, self.attack_hitbox.height-10))
                 screen.blit(s, self.attack_hitbox.topleft)
             # Beast Claw
-            else:
+            elif self.current_attack_name == "beast_claw":
                 # Thicker claws
                 s = pygame.Surface((self.attack_hitbox.width, self.attack_hitbox.height), pygame.SRCALPHA)
                 s.fill((0,0,0,0))
@@ -749,7 +804,6 @@ class Character:
 
 # --- HELPER FUNCTIONS ---
 
-# --- CHANGED: Added unique idle animations and a locked-in animation ---
 def draw_char_select_screen(screen, char_list, p1_cursor, p2_cursor, p1_locked, p2_locked, char_colors):
     
     # Create a dictionary of dummy characters just for previews
@@ -980,15 +1034,20 @@ def main():
                                 
                                 # Get specific damage for multi-hit/special moves
                                 if attacker.type == 'knight':
-                                    if attacker.attack_frame > 15: dmg = attacker.attack2_damage
-                                    elif attacker.special_cooldown > 20: dmg = attacker.special_damage
+                                    # --- CHANGED: Check for specific attack names ---
+                                    if attacker.current_attack_name == "shield_breaker":
+                                        dmg = attacker.attack2_damage
+                                    elif attacker.current_attack_name == "dancing_blade":
+                                        dmg = attacker.special_damage
+                                    # Forward slash and forward air use default attack1_damage
+                                    # --- End Change ---
                                 elif attacker.type == 'hunter':
                                     dmg = attacker.special_damage
                                 elif attacker.type == 'beast':
-                                    if attacker.special_cooldown > 30: # Beast Bomb
+                                    if attacker.current_attack_name == "beast_bomb":
                                         dmg = attacker.special_damage
-                                        stun_multiplier = 1.0 # <-- HERE IS THE CHANGE
-                                    else: # Beast Claw
+                                        stun_multiplier = 1.0 # Beast bomb stun
+                                    elif attacker.current_attack_name == "beast_claw":
                                         dmg = attacker.attack1_damage
                                     
                                 victim.take_damage(dmg, attacker.x, attacker.y, stun_multiplier) # Pass the multiplier
